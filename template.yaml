@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Puzzle15 Vue App
+
+Globals:
+  Function:
+    Timeout: 30
+
+Resources:
+  Puzzle15S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: sam-atul-puzzle15-vue-app
+      # AccessControl: Privatesam
+      WebsiteConfiguration:
+        IndexDocument: index.html
+
+  Puzzle15CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 403
+            ResponsePagePath: /index.html
+        Origins:
+          - DomainName: !Sub "${Puzzle15S3Bucket}.s3.amazonaws.com"
+            Id: Puzzle15S3Origin
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOriginIdentity}"
+            # CustomOriginConfig:
+            #   HTTPPort: 80
+            #   HTTPSPort: 443
+            #   OriginProtocolPolicy: https-only
+        Enabled: true
+        DefaultRootObject: index.html
+        DefaultCacheBehavior:
+          TargetOriginId: Puzzle15S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+          CachedMethods:
+            - GET
+            - HEAD
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+
+  CloudFrontOriginIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: "origin identity"
+
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: sam-atul-puzzle15-vue-app
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${CloudFrontOriginIdentity}"
+            Action: "s3:GetObject"
+            Resource: arn:aws:s3:::sam-atul-puzzle15-vue-app/*
+
+  CommonLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: my-layer
+      Description: dependencies for Puzzle15 Lambda
+      ContentUri: my-layer
+      CompatibleRuntimes:
+        - nodejs16.x
+      RetentionPolicy: Retain
+
+  Puzzle15LambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./lambda/
+      Handler: index.handler
+      Runtime: nodejs16.x
+      # Layers: -arn:aws:lambda:us-east-1:308510499214:layer:my-layer
+      # Policies:
+      Layers:
+        - !Ref CommonLayer
+
+      Environment:
+        Variables:
+          MONGODB_URI: "mongodb+srv://atul:1234@cluster0.u6ugwdl.mongodb.net/?retryWrites=true&w=majority"
+      Events:
+        GetLeaderboard:
+          Type: Api
+          Properties:
+            Path: /leaderboard
+            Method: GET
+        PostLeaderboard:
+          Type: Api
+          Properties:
+            Path: /leaderboard
+            Method: POST
